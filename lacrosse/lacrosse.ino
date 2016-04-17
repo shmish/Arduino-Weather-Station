@@ -1,4 +1,4 @@
-/* Name: lacrosse.pde
+/* Original Name: lacrosse.pde
  * Version: 1.1
  * Author: Kelsey Jordahl
  * Copyright: Kelsey Jordahl 2010
@@ -6,6 +6,10 @@
     Interactive Matter 2009 [licensed under GPL with permission])
  * License: GPLv3
  * Time-stamp: <Mon Jun 27 12:02:27 EDT 2011> 
+ * 
+ * edited author: Doug Smith
+ * removed references to pressure and indoor temp sensor
+ * to be used with a TX7 weather sensor
 
 Receive La Crosse TX4 weather sensor data with Arduino and send to
 serial (USB) port.  Also records indoor pressure and temperature from
@@ -23,30 +27,7 @@ Also useful was the detailed data protocol description at
 433.92 MHz RF receiver:
  http://www.sparkfun.com/commerce/product_info.php?products_id=8950
 
-BMP085 pressure sensor:
- Breakout board and datasheet available from SparkFun:
- http://www.sparkfun.com/commerce/product_info.php?products_id=9694
-  functions to communicate with BMP085 via I2C from:
- http://interactive-matter.org/2009/12/arduino-barometric-pressure-sensor-bmp085
-  see also:
- http://news.jeelabs.org/2009/02/19/hooking-up-a-bmp085-sensor
 
-DS1631 temperature sensor:
- Maxim digital temperature sensor with I2C interface in DIP-8 package
- http://www.maxim-ic.com/datasheet/index.mvp/id/3241
-  see also:
- http://kennethfinnegan.blogspot.com/2009/10/arduino-temperature-logger.html
-
-Thermistor (no longer used):
- Vishay 10 kOhm NTC thermistor
- part no: NTCLE100E3103GB0
- <http://www.vishay.com/thermistors/list/product-29049>
-
-LM61 (no longer used):
- National Semiconductor TO-92 Temperature Sensor
- 10 mV/degree with 600 mV offset, temperature range -30 deg C to 100 deg C
- part no: LM61BIZ
- <http://www.national.com/mpf/LM/LM61.html>
 
      see: http://www.arduino.cc/playground/ComponentLib/Thermistor2
      and: http://www.ladyada.net/learn/sensors/tmp36.html
@@ -83,13 +64,13 @@ LM61 (no longer used):
 // I reversed the red - did I flip the LED from the schematic?
 #define RED_TESTLED_OFF()            ((PORTD &= ~(1<<PORTD7)))
 #define RED_TESTLED_ON()           ((PORTD |=  (1<<PORTD7)))
-#define BMP085_ADDRESS 0x77	/* I2C address of BMP085 pressure sensor */
-#define DS1631_ADDRESS 0x48	/* I2C address of DS1631 temp sensor */
-#define MAXTICK 6009	 /* about 60 s interval for pressure sampling */
+//#define BMP085_ADDRESS 0x77	/* I2C address of BMP085 pressure sensor */
+//#define DS1631_ADDRESS 0x48	/* I2C address of DS1631 temp sensor */
+//#define MAXTICK 6009	 /* about 60 s interval for pressure sampling */
 
 // DS1631 command codes
-#define STARTTEMP 0x51
-#define READTEMP 0xAA
+//#define STARTTEMP 0x51
+//#define READTEMP 0xAA
 
 /* serial port communication (via USB) */
 #define BAUD_RATE 9600
@@ -107,36 +88,8 @@ LM61 (no longer used):
 #define MIN_WAIT 225		// minimum interval since end of last bit
 #define MAX_WAIT 275		// maximum interval since end of last bit
 
-/* constants for extended Steinhart-Hart equation from thermistor datasheet
-#define A 3.354016E-03
-#define B 2.569850E-04
-#define C 2.620131E-06
-#define D 6.383091E-08
-*/
-
-/* ADC depends on reference voltage.  Could tie this to internal 1.05 V? */
-/* Linux machine voltage */
-//#define VCC 4.85		/* supply voltage on USB */
-/* MacBook voltage */
-//#define VCC 5.05		/* supply voltage on USB */
-//#define LM61PIN 0		/* analog pin for LM61 sensor */
-//#define THERMPIN 1		/* analog pin for thermistor */
-
 const unsigned char oversampling_setting = 3; //oversampling for measurement
 const unsigned char pressure_waittime[4] = { 5, 8, 14, 26 };
-
-/*  calibration constants from the BMP085 datasheet */
-int ac1;
-int ac2; 
-int ac3; 
-unsigned int ac4;
-unsigned int ac5;
-unsigned int ac6;
-int b1; 
-int b2;
-int mb;
-int mc;
-int md;
 
 unsigned int CapturedTime;
 unsigned int PreviousCapturedTime;
@@ -167,14 +120,6 @@ long pressure = 0;				/* BMP085 pressure (Pa) */
 unsigned int starttime;
 unsigned int interval;
 boolean timerflag = false;	/* flag to set when timer goes off */
-
-// pressure sample interval timer
-ISR(TIMER2_COMPA_vect) {
-  if (tick++ > MAXTICK) {
-    timerflag = true;
-    tick=0;
-  }
-}
 
 // does nothing now
 ISR( TIMER1_OVF_vect )
@@ -300,12 +245,6 @@ float dewpoint(float T, float h) {
 void setup() {
   Serial.begin( BAUD_RATE );   //using the USB serial port for debugging and logging
   Serial.println( "La Crosse weather station capture begin" );
-  Wire.begin();
-  bmp085_get_cal_data();
-  // initialize the DS1631 temperature sensor
-  Wire.beginTransmission(DS1631_ADDRESS);
-  Wire.send(STARTTEMP);
-  Wire.endTransmission();
 
   cli();
   DDRB = 0x2F;   // B00101111
@@ -340,20 +279,6 @@ void loop() {
   if (PacketDone) {	     // have a bit string that's ended
     ParsePacket(FinishedPacket);
     PacketDone=0;
-  }
-  if (timerflag) {		// time to take a pressure sample
-    timerflag = false;
-    interval=millis() - starttime; /* measure time since last sample */
-    starttime = millis();
-    PrintIndoor();		/* get DS1631 temp */
-    bmp085_read_temperature_and_pressure(&temperature,&pressure);
-    Serial.print("ELAPSED MS= ");
-    Serial.println(interval,DEC);
-    Serial.print("BMP085 TEMP: ");
-    Serial.println(temperature,DEC);
-    Serial.print("DATA: P= ");
-    Serial.print(pressure,DEC);
-    Serial.println(" Pa");
   }
 }
 
@@ -427,167 +352,3 @@ void ParsePacket(byte *Packet) {
   }
 }
 
-// send indoor temperature to serial port
-void PrintIndoor() {
-  byte temp[2];
-  Wire.beginTransmission(DS1631_ADDRESS);
-  Wire.send(READTEMP);
-  Wire.endTransmission();
-  Wire.requestFrom(DS1631_ADDRESS, 2);
-  temp[0] = Wire.receive(); // MSB
-  temp[1] = Wire.receive(); // LSB
-
-  Serial.print("INDOOR: ");
-  Serial.print(temp[0], DEC);
-  Serial.print(".");
-  Serial.print(temp[1] / 25, DEC); // fractional degree
-  Serial.println(" deg C (DS1631)");
-}
-
-void bmp085_read_temperature_and_pressure(int* temperature, long* pressure) {
-  long ut= bmp085_read_ut();
-  long up = bmp085_read_up();
-  long x1, x2, x3, b3, b5, b6, p;
-  unsigned long b4, b7;
-
-   //calculate the temperature
-   x1 = ((long)ut - ac6) * ac5 >> 15;
-   x2 = ((long) mc << 11) / (x1 + md);
-   b5 = x1 + x2;
-   *temperature = (b5 + 8) >> 4;
-   
-   //calculate the pressure
-   b6 = b5 - 4000;
-   x1 = (b2 * (b6 * b6 >> 12)) >> 11; 
-   x2 = ac2 * b6 >> 11;
-   x3 = x1 + x2;
-   //   b3 = (((int32_t) ac1 * 4 + x3)<<oversampling_setting + 2) >> 2;
-   b3 = (((int32_t) ac1 * 4 + x3)<<oversampling_setting) >> 2;
-   x1 = ac3 * b6 >> 13;
-   x2 = (b1 * (b6 * b6 >> 12)) >> 16;
-   x3 = ((x1 + x2) + 2) >> 2;
-   b4 = (ac4 * (uint32_t) (x3 + 32768)) >> 15;
-   b7 = ((uint32_t) up - b3) * (50000 >> oversampling_setting);
-   p = b7 < 0x80000000 ? (b7 * 2) / b4 : (b7 / b4) * 2;
-   
-   x1 = (p >> 8) * (p >> 8);
-   x1 = (x1 * 3038) >> 16;
-   x2 = (-7357 * p) >> 16;
-   *pressure = p + ((x1 + x2 + 3791) >> 4);
-
-}
-
-unsigned int bmp085_read_ut() {
-  write_register(0xf4,0x2e);
-  delay(5); //longer than 4.5 ms
-  return read_int_register(0xf6);
-}
-
-void  bmp085_get_cal_data() {
-  #ifdef DEBUG
-  Serial.println("Reading BMP085 calibration data");
-  #endif
-  ac1 = read_int_register(0xAA);
-  ac2 = read_int_register(0xAC);
-  ac3 = read_int_register(0xAE);
-  ac4 = read_int_register(0xB0);
-  ac5 = read_int_register(0xB2);
-  ac6 = read_int_register(0xB4);
-  b1 = read_int_register(0xB6);
-  b2 = read_int_register(0xB8);
-  mb = read_int_register(0xBA);
-  mc = read_int_register(0xBC);
-  md = read_int_register(0xBE);
-  #ifdef DEBUG
-  Serial.print("AC1: ");
-  Serial.println(ac1,DEC);
-  Serial.print("AC2: ");
-  Serial.println(ac2,DEC);
-  Serial.print("AC3: ");
-  Serial.println(ac3,DEC);
-  Serial.print("AC4: ");
-  Serial.println(ac4,DEC);
-  Serial.print("AC5: ");
-  Serial.println(ac5,DEC);
-  Serial.print("AC6: ");
-  Serial.println(ac6,DEC);
-  Serial.print("B1: ");
-  Serial.println(b1,DEC);
-  Serial.print("B2: ");
-  Serial.println(b1,DEC);
-  Serial.print("MB: ");
-  Serial.println(mb,DEC);
-  Serial.print("MC: ");
-  Serial.println(mc,DEC);
-  Serial.print("MD: ");
-  Serial.println(md,DEC);
-  #endif
-}
-
-
-long bmp085_read_up() {
-  write_register(0xf4,0x34+(oversampling_setting<<6));
-  delay(pressure_waittime[oversampling_setting]);
-  
-  unsigned char msb, lsb, xlsb;
-  Wire.beginTransmission(BMP085_ADDRESS);
-  Wire.send(0xf6);  // register to read
-  Wire.endTransmission();
-
-  Wire.requestFrom(BMP085_ADDRESS, 3); // read a byte
-  while(!Wire.available()) {
-    // waiting
-  }
-  msb = Wire.receive();
-  while(!Wire.available()) {
-    // waiting
-  }
-  lsb |= Wire.receive();
-  while(!Wire.available()) {
-    // waiting
-  }
-  xlsb |= Wire.receive();
-  return (((long)msb<<16) | ((long)lsb<<8) | ((long)xlsb)) >>(8-oversampling_setting);
-}
-
-void write_register(unsigned char r, unsigned char v)
-{
-  Wire.beginTransmission(BMP085_ADDRESS);
-  Wire.send(r);
-  Wire.send(v);
-  Wire.endTransmission();
-}
-
-char read_register(unsigned char r)
-{
-  unsigned char v;
-  Wire.beginTransmission(BMP085_ADDRESS);
-  Wire.send(r);  // register to read
-  Wire.endTransmission();
-
-  Wire.requestFrom(BMP085_ADDRESS, 1); // read a byte
-  while(!Wire.available()) {
-    // waiting
-  }
-  v = Wire.receive();
-  return v;
-}
-
-int read_int_register(unsigned char r)
-{
-  unsigned char msb, lsb;
-  Wire.beginTransmission(BMP085_ADDRESS);
-  Wire.send(r);  // register to read
-  Wire.endTransmission();
-
-  Wire.requestFrom(BMP085_ADDRESS, 2); // read a byte
-  while(!Wire.available()) {
-    // waiting
-  }
-  msb = Wire.receive();
-  while(!Wire.available()) {
-    // waiting
-  }
-  lsb = Wire.receive();
-  return (((int)msb<<8) | ((int)lsb));
-}
